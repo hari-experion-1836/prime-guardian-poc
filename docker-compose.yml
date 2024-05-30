@@ -1,39 +1,79 @@
-version: "3"
+version: '3.8'
+
 services:
-  postgres:
-    image: "postgres:latest"
-    environment:
-      - POSTGRES_PASSWORD=postgres_password
-  nginx:
-    depends_on:
-      - api
-      - client
-    restart: always
-    build:
-      dockerfile: Dockerfile.dev
-      context: ./nginx
+  react-app:
+    build: ./react-app
     ports:
-      - "3050:80"
-  api:
-    build:
-      dockerfile: Dockerfile.dev
-      context: "./server"
+      - "3000:3000"
     volumes:
-      - /app/node_modules
-      - ./server:/app
-    environment:
-      - PGUSER=postgres
-      - PGHOST=postgres
-      - PGDATABASE=postgres
-      - PGPASSWORD=postgres_password
-      - PGPORT=5432
-  client:
+      - ./react-app:/app:delegated # Use :delegated for better performance
     stdin_open: true
-    environment:
-      - CHOKIDAR_USEPOLLING=true
-    build:
-      dockerfile: Dockerfile.dev
-      context: ./client
+    tty: true
+    depends_on:
+      - express-server
+
+  express-server:
+    build: ./express-server
+    ports:
+      - "5000:5000"
     volumes:
-      - /app/node_modules
-      - ./client:/app
+      - ./express-server:/app:delegated # Use :delegated for better performance
+      - /app/node_modules # Prevents overwriting node_modules with the empty local directory
+    environment:
+      - DATABASE_HOST=mysql
+      - DATABASE_USER=root
+      - DATABASE_PASSWORD=example
+      - DATABASE_NAME=mydatabase
+    stdin_open: true
+    tty: true
+    depends_on:
+      - mysql
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+      MYSQL_DATABASE: mydatabase
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    environment:
+      DB_VENDOR: mysql
+      DB_ADDR: keycloak-mysql
+      DB_DATABASE: keycloak
+      DB_USER: root
+      DB_PASSWORD: example
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    depends_on:
+      - keycloak-mysql
+
+  keycloak-mysql:
+    image: mysql:8.0
+    container_name: keycloak-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+      MYSQL_DATABASE: keycloak
+    volumes:
+      - keycloak-mysql-data:/var/lib/mysql
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    depends_on:
+      - react-app
+      - express-server
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+
+volumes:
+  mysql-data:
+  keycloak-mysql-data:
